@@ -8,12 +8,14 @@ import com.hmdp.entity.Shop;
 import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.utils.RedisData;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 
+import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
 import static com.hmdp.utils.RedisConstants.*;
@@ -44,6 +46,13 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         return Result.ok(shop);
     }
 
+    /**
+     * 使用互斥锁解决缓存击穿问题，查询指定 ID 的商铺信息
+     * 缓存击穿指的是热点 key 在缓存过期瞬间，大量请求同时涌入数据库。
+     * 此方法通过互斥锁保证同一时间只有一个线程能进行缓存重建操作。
+     * @param id 商铺的唯一标识
+     * @return 商铺实体对象，如果未找到则返回 null
+     */
     public  Shop queryWithMutex(Long id){
         // 定义 Redis 键
         String key = CACHE_SHOP_KEY + id;
@@ -97,6 +106,13 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     }
 
 
+     /**
+     * 通过缓存穿透方案查询商铺信息
+     * 该方法会先从 Redis 缓存中查询商铺信息，若缓存不存在则查询数据库，
+     * 数据库查询结果为空时会将空值写入缓存，避免缓存穿透问题
+     * @param id 商铺的唯一标识
+     * @return 商铺实体对象，如果未找到则返回 null
+     */
     public  Shop queryWithPassThrough(Long id){
         // 定义 Redis 键
         String key = CACHE_SHOP_KEY + id;
@@ -130,16 +146,39 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     }
 
 
-
-    //获取互斥锁
+    /**获取互斥锁
+     *
+     * @param key
+     * @return
+     */
     private boolean trtLock(String key){
         Boolean flag=stringRedisTemplate.opsForValue().setIfAbsent(key,"1",10,TimeUnit.SECONDS);
         return BooleanUtil.isTrue(flag);
     }
 
-    //释放互斥锁
+    /**
+     * 释放互斥锁
+     * @param key
+     */
     private  void unlock(String key){
         stringRedisTemplate.delete(key);
+    }
+
+
+    /**
+     * 将指定 ID 的店铺信息保存到 Redis 中，并设置逻辑过期时间
+     * @param id 店铺的唯一标识，用于从数据库中查询对应的店铺信息
+     * @param expireSeconds 逻辑过期时间的秒数，用于设置店铺信息在 Redis 中的逻辑过期时间
+     */
+    public void  saveShop2Redis(long id,Long expireSeconds){
+        //查询店铺数据
+        Shop shop =getById(id);
+        //封装逻辑过期时间
+        RedisData redisData =new RedisData();
+        redisData.setData(shop);
+        redisData.setExpireTime(LocalDateTime.now().plusSeconds(expireSeconds));
+        //写入redis
+        stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY+id,JSONUtil.toJsonStr(redisData));
     }
 
 
