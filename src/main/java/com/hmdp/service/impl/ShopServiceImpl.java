@@ -57,6 +57,21 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         return Result.ok(shop);
     }
 
+
+    @Override
+    @Transactional
+    public Result updata(Shop shop) {
+        Long id = shop.getId();
+        if (id == null) {
+            return Result.fail("店铺id不能为空");
+        }
+        //1.更新数据库
+        updateById(shop);
+        //2.删除缓存
+        stringRedisTemplate.delete(CACHE_SHOP_KEY + id);
+        return Result.ok();
+    }
+
     //private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
 
 //    /**
@@ -250,19 +265,4 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 //        //写入redis
 //        stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY+id,JSONUtil.toJsonStr(redisData));
 //    }
-
-
-    @Override
-    @Transactional
-    public Result updata(Shop shop) {
-        Long id = shop.getId();
-        if (id == null) {
-            return Result.fail("店铺id不能为空");
-        }
-        //1.更新数据库
-        updateById(shop);
-        //2.删除缓存
-        stringRedisTemplate.delete(CACHE_SHOP_KEY + id);
-        return Result.ok();
-    }
 }
