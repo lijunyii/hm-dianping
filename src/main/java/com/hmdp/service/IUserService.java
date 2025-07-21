@@ -25,4 +25,8 @@ public interface IUserService extends IService<User> {
      * @return 包含 token 的结果
      */
     Result login(LoginFormDTO loginForm, HttpSession session);
+
+    Result sign();
+
+    Result signCount();
 }
